@@ -1,0 +1,8 @@
+- insert:
+    - id: theme-sleep
+      name: '@local/dsh-theme-sleep'
+      config:
+        dayStart: '06:00'
+        dayEnd: '19:00'
+        reminderEnabled: true
+        reminderTime: '23:30'

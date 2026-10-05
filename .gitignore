@@ -1,0 +1,8 @@
+node_modules/
+*.tgz
+.DS_Store
+*.log
+
+# lib/ 是随仓库发货的产物，必须提交：DSH 从 GitHub 链接安装时不跑构建步骤，
+# lib/client.js 就是浏览器实际加载的那份文件。`pnpm run check:fresh` 会在
+# lib/ 与 src/ 不一致时失败，CI 也跑同一条检查。

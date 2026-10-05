@@ -1,0 +1,5 @@
+# pnpm 11 refuses to install while any dependency's build script is undecided.
+# esbuild's postinstall only validates the platform binary its own optional
+# dependency already ships, so it is allowed here; nothing else has scripts.
+allowBuilds:
+  esbuild: true

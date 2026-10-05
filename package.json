@@ -1,0 +1,88 @@
+{
+  "name": "@local/dsh-theme-sleep",
+  "version": "1.0.0",
+  "private": true,
+  "description": "日出而作、日落而息：按本地时间在浅色/深色主题之间自动切换（默认 6:00–19:00 浅色，19:00–次日 6:00 深色），并在每天 23:30 用应用内提醒卡 + 系统通知 + 提示音催你去睡觉。",
+  "license": "MIT",
+  "author": "heshuren371",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/heshuren371/dsh-theme-sleep.git"
+  },
+  "homepage": "https://github.com/heshuren371/dsh-theme-sleep#readme",
+  "bugs": {
+    "url": "https://github.com/heshuren371/dsh-theme-sleep/issues"
+  },
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "plugin",
+    "theme",
+    "dark-mode",
+    "light-mode",
+    "circadian",
+    "reminder",
+    "sleep",
+    "productivity",
+    "typescript"
+  ],
+  "type": "module",
+  "icon": "./icon.svg",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "cordis.patch.yml",
+    "locale",
+    "icon.svg",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": "^22.19.0 || >=24.0.0"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "check:fresh": "node scripts/check-fresh.mjs",
+    "typecheck": "tsc -p tsconfig.json",
+    "test:core": "node --test \"tests/**/*.test.mjs\"",
+    "test:client": "node scripts/smoke.mjs",
+    "test": "npm run build && npm run test:core && npm run test:client",
+    "verify": "npm run typecheck && npm run test"
+  },
+  "dependencies": {
+    "@deepseek-ai/schemastery": "^3.18.4"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.3",
+    "@types/react": "^18.3.0",
+    "@types/react-dom": "^18.3.0",
+    "esbuild": "^0.28.2",
+    "jsdom": "^30.1.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "typescript": "^7.0.2"
+  },
+  "packageManager": "pnpm@11.21.0",
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-conversation",
+        "@deepseek-ai/dsh-client-ui-settings",
+        "@deepseek-ai/dsh-client-ui-theme",
+        "@deepseek-ai/dsh-client-locale"
+      ]
+    }
+  }
+}

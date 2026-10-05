@@ -1,0 +1,47 @@
+name: ci
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+# 与本地 `pnpm run verify` 同一组门禁：类型检查 → 构建 → 产物新鲜度 → 纯核心
+# 单测 → jsdom 冒烟测试。任何一条红了都不要合。
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gates:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4 # 版本取自 package.json 的 packageManager
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24' # 与 package.json 的 engines.node 对齐
+          cache: pnpm
+
+      - name: Install (frozen lockfile)
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm run typecheck
+
+      - name: Build (esbuild client bundle + tsc host/core)
+        run: pnpm run build
+
+      # 安装走的是仓库里的 lib/，不是这次构建的产物。先确认两者一致，否则下面的
+      # 测试验的是发不出去的东西。
+      - name: Freshness check (lib/ must equal a fresh build)
+        run: pnpm run check:fresh
+
+      - name: Unit tests (pure core)
+        run: pnpm run test:core
+
+      - name: Client smoke test (jsdom)
+        run: pnpm run test:client

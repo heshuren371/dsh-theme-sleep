@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Auto Theme & Sleep Reminder",
+    "description": "Switches the light/dark theme by local time (light 06:00-19:00, dark 19:00-06:00) and reminds you to go to bed at 23:30."
+  }
+}
