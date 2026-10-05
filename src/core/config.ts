@@ -13,13 +13,14 @@ import {
   MAX_MANUAL_OVERRIDE_MINUTES, MAX_SNOOZE_MINUTES, MIN_MANUAL_OVERRIDE_MINUTES, MIN_SNOOZE_MINUTES,
   type ThemeSleepSettings,
 } from './types.ts'
+import { isCompletionSound } from './sound.ts'
 import { parseClock, secondToHhMm } from './time.ts'
 import type { ThemeRule } from './theme.ts'
 
 /** Keys accepted from an untrusted settings object. */
 const KEYS = [
   'dayStart', 'dayEnd', 'reminderEnabled', 'reminderTime', 'snoozeMinutes', 'soundEnabled',
-  'manualOverrideMinutes',
+  'manualOverrideMinutes', 'completionSound',
 ] as const
 
 /**
@@ -96,6 +97,9 @@ export function normalizeSettings(value: unknown): ThemeSleepSettings {
     snoozeMinutes: normalizeSnooze(source['snoozeMinutes']),
     soundEnabled: normalizeBoolean(source['soundEnabled'], DEFAULT_SETTINGS.soundEnabled),
     manualOverrideMinutes: normalizeOverride(source['manualOverrideMinutes']),
+    completionSound: isCompletionSound(source['completionSound'])
+      ? source['completionSound']
+      : DEFAULT_SETTINGS.completionSound,
   }
 }
 

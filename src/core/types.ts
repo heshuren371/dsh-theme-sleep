@@ -5,6 +5,7 @@
  * field names travel: profile comment -> settings row -> live plugin.
  * @module
  */
+import type { CompletionSound } from './sound.ts'
 
 /** Theme the automatic switcher puts the application into. */
 export type ThemeId = 'light' | 'dark'
@@ -28,6 +29,8 @@ export interface ThemeSleepSettings {
    * `0` disables the override entirely (the rule re-asserts on the next check).
    */
   readonly manualOverrideMinutes: number
+  /** Cue played once each time a Session finishes a turn; `off` plays nothing. */
+  readonly completionSound: CompletionSound
 }
 
 /** Defaults for every field; also the composition-layer fallback. */
@@ -39,6 +42,7 @@ export const DEFAULT_SETTINGS: ThemeSleepSettings = Object.freeze({
   snoozeMinutes: 10,
   soundEnabled: true,
   manualOverrideMinutes: 30,
+  completionSound: 'chime',
 })
 
 /** Default period bounds as seconds since local midnight. */

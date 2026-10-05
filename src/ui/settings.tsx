@@ -10,6 +10,7 @@
  */
 import { h, React } from './h.js'
 import type { SettingsRowProps } from './state.js'
+import { COMPLETION_SOUNDS, type CompletionSound } from '../core/sound.js'
 import { formatClock, parseClock } from '../core/time.js'
 import {
   DEFAULT_SETTINGS,
@@ -31,6 +32,14 @@ const OVERRIDE_CHOICES: readonly { readonly minutes: number; readonly key: strin
   { minutes: 120, key: 'panel.overrideTwoHours' },
   { minutes: MAX_MANUAL_OVERRIDE_MINUTES, key: 'panel.overridePeriod' },
 ]
+
+/** Dictionary key naming one completion cue. */
+const COMPLETION_LABELS: Readonly<Record<CompletionSound, string>> = {
+  off: 'panel.completionOff',
+  ding: 'panel.completionDing',
+  chime: 'panel.completionChime',
+  blip: 'panel.completionBlip',
+}
 
 /** One rendered element, as the platform bridge returns it. */
 type UiElement = ReturnType<typeof h>
@@ -134,6 +143,7 @@ export function SettingsRow(props: SettingsRowProps): UiElement {
   const soundEnabled = useView(state => state.settings.soundEnabled)
   const notification = useView(state => state.notification)
   const manualOverrideMinutes = useView(state => state.settings.manualOverrideMinutes)
+  const completionSound = useView(state => state.settings.completionSound)
 
   const [startDraft, setStartDraft] = useState<string | null>(null)
   const [endDraft, setEndDraft] = useState<string | null>(null)
@@ -320,6 +330,31 @@ export function SettingsRow(props: SettingsRowProps): UiElement {
         { className: 'dts-toggle' },
         h('span', { className: 'dts-caption' }, text('panel.sound')),
         switchButton(soundEnabled, text('panel.sound'), () => { commit({ soundEnabled: !soundEnabled }) }),
+      ),
+      h(
+        'label',
+        { className: 'dts-field' },
+        h('span', { className: 'dts-caption' }, text('panel.completionTitle')),
+        h(
+          'select',
+          {
+            className: 'dts-input dts-input--select',
+            value: completionSound,
+            'aria-label': text('panel.completionTitle'),
+            onChange: (event: { currentTarget: HTMLSelectElement }) => {
+              const next = event.currentTarget.value
+              if (COMPLETION_SOUNDS.includes(next as CompletionSound)) {
+                commit({ completionSound: next as CompletionSound })
+              }
+            },
+          },
+          ...COMPLETION_SOUNDS.map(choice => h(
+            'option',
+            { key: choice, value: choice },
+            text(COMPLETION_LABELS[choice]),
+          )),
+        ),
+        h('span', { className: 'dts-caption' }, text('panel.completionDescription')),
       ),
       notificationLine(),
     ),

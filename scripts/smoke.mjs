@@ -295,6 +295,22 @@ function createHarness({ now, theme = 'dark', formSnapshot, storedState }) {
     },
   }
 
+  // Session running state, driven by the completion scenario: the client reads
+  // `ctx.uiSession.sessionStatus` and folds it into the completion cue.
+  let sessionStatus = new Map()
+  const sessionStatusListeners = new Set()
+  const emitRunning = entries => {
+    sessionStatus = new Map(entries.map(([id, running]) => [id, { running, pendingInteraction: undefined, completionUnread: false }]))
+    for (const listener of [...sessionStatusListeners]) listener()
+  }
+  const statusSource = {
+    getSnapshot: () => sessionStatus,
+    subscribe(listener) {
+      sessionStatusListeners.add(listener)
+      return () => { sessionStatusListeners.delete(listener) }
+    },
+  }
+
   const ctx = {
     effect(callback) {
       const dispose = callback()
@@ -345,6 +361,7 @@ function createHarness({ now, theme = 'dark', formSnapshot, storedState }) {
       getTheme: () => snapshot(),
       setTheme,
     },
+    uiSession: { sessionStatus: statusSource },
     configForms: {
       get(entryId) {
         state.formIds.push(entryId)
@@ -487,7 +504,7 @@ function createHarness({ now, theme = 'dark', formSnapshot, storedState }) {
   return {
     dom, win, doc, ctx, state, reads, form,
     evaluate, instantiate, applyWith, latestTimer, fire, mountComponent,
-    captureLiveState, disposeAll, themeIds, registration, setNow, reminderHost,
+    captureLiveState, disposeAll, themeIds, registration, setNow, reminderHost, emitRunning,
     emitForm, changeTheme, run,
   }
 }
@@ -1029,8 +1046,84 @@ console.log('\n[5] stale durable state and a late open')
   }
 }
 
+// ── [6] completion cue: a finished turn rings once ───────────────────────────
+console.log('\n[6] completion cue on a finished turn')
+{
+  const h = createHarness({
+    now: msAt(12, 0),
+    theme: 'light',
+    formSnapshot: { status: 'ready', value: { ...READY_VALUE }, writable: true },
+  })
+  try {
+    h.evaluate()
+    const mod = h.instantiate()
+    const applyError = await h.applyWith(mod)
+    check('[6] apply resolves with a session-status source', applyError === null, applyError && String(applyError.stack ?? applyError))
+
+    // The baseline is taken at apply time; a Session that was already idle must
+    // never ring when the page opens.
+    const before = h.reads.audio
+    h.emitRunning([['s1', false]])
+    check('[6] an already-idle baseline does not ring', h.reads.audio === before, `${before} → ${h.reads.audio}`)
+
+    h.emitRunning([['s1', true]])
+    check('[6] starting a turn does not ring', h.reads.audio === before, `${before} → ${h.reads.audio}`)
+
+    const running = h.reads.audio
+    h.emitRunning([['s1', false]])
+    check('[6] a finished turn rings once', h.reads.audio > running, `${running} → ${h.reads.audio}`)
+
+    // A repeat publish at the same state is not a new completion.
+    const afterRing = h.reads.audio
+    h.emitRunning([['s1', false]])
+    check('[6] a repeated idle snapshot does not ring again', h.reads.audio === afterRing, `${afterRing} → ${h.reads.audio}`)
+
+    // Two Sessions finishing together ring once each.
+    const twoBefore = h.reads.audio
+    h.emitRunning([['s1', true], ['s2', true]])
+    const twoRunning = h.reads.audio
+    h.emitRunning([['s1', false], ['s2', false]])
+    check(
+      '[6] two finished turns ring twice',
+      h.reads.audio - twoRunning >= 2,
+      `${twoBefore} → ${twoRunning} → ${h.reads.audio}`,
+    )
+
+    // `off` silences the cue while the page stays fully functional.
+    await h.run(() => h.registration(ROW_SLOT).options.inject().persist({ completionSound: 'off' }))
+    const offBefore = h.reads.audio
+    h.emitRunning([['s1', true]])
+    h.emitRunning([['s1', false]])
+    check('[6] completionSound "off" plays nothing', h.reads.audio === offBefore, `${offBefore} → ${h.reads.audio}`)
+    // The runtime already stands at the rule's theme, so no write is expected;
+    // the contract is that the cue setting does not disturb the theme driver.
+    const row = h.registration(ROW_SLOT).options.inject()
+    const live = await h.captureLiveState(row.useView)
+    check('[6] the theme stays on the rule with the cue off', live.get()?.active === 'light', JSON.stringify(live.get()?.active))
+    await live.unmount()
+
+    // A hidden page stays silent: the user cannot hear a background tab.
+    await h.run(() => h.registration(ROW_SLOT).options.inject().persist({ completionSound: 'ding' }))
+    Object.defineProperty(h.doc, 'visibilityState', { configurable: true, get: () => 'hidden' })
+    const hiddenBefore = h.reads.audio
+    h.emitRunning([['s1', true]])
+    h.emitRunning([['s1', false]])
+    check('[6] a hidden page does not ring', h.reads.audio === hiddenBefore, `${hiddenBefore} → ${h.reads.audio}`)
+    Object.defineProperty(h.doc, 'visibilityState', { configurable: true, get: () => 'visible' })
+    h.emitRunning([['s1', true]])
+    h.emitRunning([['s1', false]])
+    check('[6] a visible page rings again', h.reads.audio > hiddenBefore, `${hiddenBefore} → ${h.reads.audio}`)
+
+    const disposeErrors = await h.disposeAll()
+    check('[6] teardown is clean', disposeErrors.length === 0, disposeErrors.map(String).join(' | '))
+    check('[6] no plugin listener errors were recorded', h.state.errors.length === 0, h.state.errors.map(String).join(' | '))
+  } catch (error) {
+    check('[6] scenario completed', false, String(error && error.stack ? error.stack : error))
+  }
+}
+
 // ── [6] console hygiene ──────────────────────────────────────────────────────
-console.log('\n[6] console hygiene')
+console.log('\n[7] console hygiene')
 {
   check('no plugin or React errors were logged', consoleErrors.length === 0, consoleErrors.join(' | '))
 }

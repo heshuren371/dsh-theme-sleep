@@ -19,6 +19,8 @@ import { localDayKey } from './core/time.js'
 import { loadStoredState, saveStoredState } from './core/storage.js'
 import { themePhase, type ThemeRule } from './core/theme.js'
 import { ReminderEngine, type ReminderState } from './core/reminder.js'
+import { CompletionWatch, type RunningSnapshot, type RunningSource } from './core/completion.js'
+import type { CompletionSound } from './core/sound.js'
 import type { ThemeSleepViewState } from './ui/state.js'
 import { Chip } from './ui/chip.js'
 import { ReminderCard } from './ui/overlay.js'
@@ -126,6 +128,16 @@ interface TimerService {
   timeout(callback: () => void, delay: number): Disposer
 }
 
+/**
+ * Observable of every Session's running state. Declared structurally: the
+ * service is published by ui-session, and older shells have delivered the map
+ * directly, so both shapes are accepted.
+ */
+interface SessionStatusSourceView {
+  getSnapshot?(): RunningSnapshot
+  subscribe?(listener: () => void): Disposer
+}
+
 /** The restricted Cordis context the shell hands to `apply`. */
 interface PluginContext {
   effect(callback: () => Disposer | void, label?: string): Disposer
@@ -136,6 +148,12 @@ interface PluginContext {
   configForms: { get(entryId: string): ConfigFormView }
   timer: TimerService
   layout?: { selectPanel?(id: string): void }
+  /**
+   * Session UI status, published by ui-session. Optional in the type and read
+   * defensively: it is not in `exports.inject`, because a shell without it must
+   * still get the theme and the bedtime reminder.
+   */
+  uiSession?: { sessionStatus?: SessionStatusSourceView | RunningSnapshot }
 }
 
 /** Shape this bundle exports back to the shell. */
@@ -334,8 +352,33 @@ let audioContext: {
   destination: unknown
 } | null = null
 
-/** Play a short three-tone chime; silent on any failure (blocked audio is expected). */
-function playChime(): void {
+/** One tone in a cue: when to start relative to the cue, and its pitch in hertz. */
+interface Tone {
+  /** Seconds after the cue starts. */
+  readonly at: number
+  /** Oscillator frequency. */
+  readonly hz: number
+}
+
+/** Length of one tone, in seconds. */
+const TONE_SECONDS = 0.45
+
+/**
+ * The built-in cues. The reminder always plays `chime`; a finished turn plays
+ * whichever cue `completionSound` selects.
+ */
+const TONES: Readonly<Record<'ding' | 'chime' | 'blip', readonly Tone[]>> = Object.freeze({
+  ding: Object.freeze([{ at: 0, hz: 880 }, { at: 0.17, hz: 1320 }]),
+  chime: Object.freeze([{ at: 0, hz: 660 }, { at: 0.5, hz: 880 }, { at: 1, hz: 660 }]),
+  blip: Object.freeze([{ at: 0, hz: 520 }]),
+})
+
+/**
+ * Play one cue with WebAudio; silent on any failure, because a blocked audio
+ * context is the expected state before the page has seen a user gesture.
+ * @param style - Which built-in cue to play.
+ */
+function playTones(style: 'ding' | 'chime' | 'blip'): void {
   try {
     const scope = window as unknown as {
       AudioContext?: new () => never
@@ -347,26 +390,36 @@ function playChime(): void {
     const audio = audioContext
     if (audio === null) return
     if (audio.state === 'suspended') void audio.resume?.()
-    const tone = (offset: number, frequency: number): void => {
+    for (const tone of TONES[style]) {
       const oscillator = audio.createOscillator()
       const gain = audio.createGain()
       oscillator.type = 'sine'
-      oscillator.frequency.value = frequency
-      const at = audio.currentTime + offset
+      oscillator.frequency.value = tone.hz
+      const at = audio.currentTime + tone.at
       gain.gain.setValueAtTime(0.0001, at)
       gain.gain.exponentialRampToValueAtTime(0.16, at + 0.03)
-      gain.gain.exponentialRampToValueAtTime(0.0001, at + 0.42)
+      gain.gain.exponentialRampToValueAtTime(0.0001, at + TONE_SECONDS - 0.03)
       oscillator.connect(gain)
       gain.connect(audio.destination)
       oscillator.start(at)
-      oscillator.stop(at + 0.45)
+      oscillator.stop(at + TONE_SECONDS)
     }
-    tone(0, 660)
-    tone(0.5, 880)
-    tone(1, 660)
   } catch (error: unknown) {
-    logError('chime', error)
+    logError('cue', error)
   }
+}
+
+/**
+ * Play the cue configured for a finished turn, if any.
+ *
+ * A hidden page plays nothing: the user cannot hear a background tab, and some
+ * browsers suspend its audio context anyway.
+ * @param style - Configured completion cue.
+ */
+function playCompletionCue(style: CompletionSound): void {
+  if (style === 'off') return
+  if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
+  playTones(style)
 }
 
 /** Page-visible clock text, used by the card copy. */
@@ -663,6 +716,30 @@ sink.load({
         }
       }
 
+      /**
+       * Adapt `uiSession.sessionStatus` to the completion engine's source.
+       *
+       * A service that publishes a bare map still works: the snapshot reader
+       * returns it and the subscription is a no-op, which degrades to "the cue
+       * fires only when something else publishes".
+       */
+      const runningSource = (): RunningSource | null => {
+        const status = ctx.uiSession?.sessionStatus
+        if (status === undefined || status === null) return null
+        const read = (): RunningSnapshot => (
+          typeof (status as SessionStatusSourceView).getSnapshot === 'function'
+            ? (status as SessionStatusSourceView).getSnapshot!()
+            : status as RunningSnapshot
+        )
+        const subscribe = typeof (status as SessionStatusSourceView).subscribe === 'function'
+          ? (listener: () => void): Disposer => (status as SessionStatusSourceView).subscribe!(listener)
+          : (): Disposer => () => {}
+        return {
+          getSnapshot: () => read(),
+          subscribe,
+        }
+      }
+
       // ---- reminder driver ----------------------------------------------
       let cardWasShowing = false
       /**
@@ -684,7 +761,7 @@ sink.load({
         const alertKey = alertKeyOf(state)
         if (celebrate && showing && !cardWasShowing && announcedKey !== alertKey) {
           showSystemNotification(text('reminder.title'), text('reminder.body', { time: clockText() }))
-          if (settings.soundEnabled) playChime()
+          if (settings.soundEnabled) playTones('chime')
           announcedKey = alertKey
         }
         cardWasShowing = showing
@@ -835,6 +912,17 @@ sink.load({
       }, 'theme-sleep: resume hooks')
 
       ctx.effect(() => ctx.on('theme/change', onThemeChange), 'theme-sleep: theme/change listener')
+
+      ctx.effect(() => {
+        const source = runningSource()
+        if (source === null) {
+          logError('completion watch', 'the uiSession service is unavailable; a finished turn has no cue')
+          return
+        }
+        const watch = new CompletionWatch(source, () => { playCompletionCue(settings.completionSound) })
+        watch.start()
+        return () => { watch.stop() }
+      }, 'theme-sleep: completion cue')
 
       ctx.effect(() => {
         let disposed = false

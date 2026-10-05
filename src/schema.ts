@@ -10,6 +10,7 @@
  */
 
 import z from '@deepseek-ai/schemastery'
+import { COMPLETION_SOUNDS } from './core/sound.ts'
 import {
   DEFAULT_SETTINGS, MAX_MANUAL_OVERRIDE_MINUTES, MAX_SNOOZE_MINUTES,
   MIN_MANUAL_OVERRIDE_MINUTES, MIN_SNOOZE_MINUTES, type ThemeSleepSettings,
@@ -38,6 +39,8 @@ export const Config: z<ThemeSleepSettings> = z.object({
   manualOverrideMinutes: z.number().step(1).min(MIN_MANUAL_OVERRIDE_MINUTES).max(MAX_MANUAL_OVERRIDE_MINUTES)
     .default(DEFAULT_SETTINGS.manualOverrideMinutes)
     .description('Minutes a manually chosen theme wins over the rule; 0 re-asserts the rule immediately.'),
+  completionSound: z.union([...COMPLETION_SOUNDS]).default(DEFAULT_SETTINGS.completionSound)
+    .description('Cue played once when a Session finishes a turn; off plays nothing.'),
 })
 
 /** The same defaults as a plain object, for callers that only need the fallbacks. */

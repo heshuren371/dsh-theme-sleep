@@ -7,9 +7,9 @@
 DSH（DeepSeek Harness）的 Web 插件，v1.0.0，MIT，仓库
 https://github.com/heshuren371/dsh-theme-sleep。
 
-它做两件事：按本地时间在浅色/深色主题之间自动切换；每天 23:30 提醒睡觉。
-两件事都是浏览器行为，所以行为几乎全在 Client 半边，Host 半边只提供 Loader
-座位和 Config 校验。
+它做三件事：按本地时间在浅色/深色主题之间自动切换；每天 23:30 提醒睡觉；
+每轮对话跑完响一声。三件事都是浏览器行为，所以行为几乎全在 Client 半边，
+Host 半边只提供 Loader 座位和 Config 校验。
 
 唯一真源是 `src/`；`lib/` 是构建产物，**提交进仓库**（DSH 从 GitHub 链接安装，
 不跑构建步骤）。
@@ -18,12 +18,12 @@ https://github.com/heshuren371/dsh-theme-sleep。
 
 | 路径 | 职责 |
 | --- | --- |
-| `src/core/**` | 纯逻辑：时段算术、提醒状态机、配置归一化、浏览器存储。不碰 DOM、定时器、`ctx`；依赖时钟的函数显式接收 `now`，所以全部可单测 |
+| `src/core/**` | 纯逻辑：时段算术、提醒状态机、完成提示音的状态折叠、配置归一化、浏览器存储、音效音名表。不碰 DOM、定时器、`ctx`；依赖时钟的函数显式接收 `now`，所以全部可单测 |
 | `src/ui/**` | 三个界面：状态胶囊 `chip`、提醒卡 `overlay`、设置行 `settings`，加一份纯 CSS 字符串 `styles.ts`。只渲染 props，不做决定 |
 | `src/platform.ts` | 浏览器模块表桥：运行时取 `react` / `react-dom` |
 | `src/ui/h.ts` | 桥的转发层，界面文件只从这里拿 React |
 | `src/i18n.ts` | 中英字典（键集以中文为准）+ `t()` |
-| `src/client.ts` | Client 入口：注册 bundle、主题驱动、提醒驱动、设置读写、slot 座位、错误边界 |
+| `src/client.ts` | Client 入口：注册 bundle、主题驱动、提醒驱动、完成提示音、设置读写、slot 座位、错误边界 |
 | `src/index.ts` / `src/schema.ts` | Host 半边：空 `apply` + Config schema |
 | `lib/` | 产物：`client.js`（esbuild 单文件 IIFE）+ `index.js`、`schema.js`、`core/*.js`（tsc） |
 | `scripts/build.mjs` | esbuild 打 Client bundle + tsc 出 Host 与核心 |
@@ -81,6 +81,9 @@ CI（`.github/workflows/ci.yml`）跑的就是 `verify` 加一次 `check:fresh`�
 - 手动改主题后的接管窗口是**有限**的，且取「窗口结束」与「下一个切换点」中更早的一个。
   给一个永不过期的截止时间会把主题永久卡死。
 - 设置行只写设置；改设置会触发一次主题重算，但不会绕过归属判断。
+- `ctx.uiSession` 刻意**不在** `exports.inject` 里：缺了它插件仍要能提供主题与就寝提醒。它缺省时完成提示音静默跳过，不要改成硬依赖。
+- 完成提示音只在页面可见时响：后台标签页用户听不见，部分浏览器还会挂起它的音频上下文。
+- 会话完成判据是**运行中→空闲**这一个转换。首次看到的空闲会话是基线，不算完成；从快照里消失的会话也不算完成（那代表会话没了，不是活干完了）。
 
 ## 不要动
 

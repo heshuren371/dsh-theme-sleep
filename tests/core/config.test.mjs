@@ -30,7 +30,7 @@ describe('normalizeSettings', () => {
     assert.deepEqual(settings, {
       dayStart: '06:00', dayEnd: '19:00', reminderEnabled: false,
       reminderTime: '23:30', snoozeMinutes: 15, soundEnabled: false,
-      manualOverrideMinutes: 30,
+      manualOverrideMinutes: 30, completionSound: 'chime',
     })
   })
 
@@ -48,6 +48,7 @@ describe('normalizeSettings', () => {
       snoozeMinutes: DEFAULT_SETTINGS.snoozeMinutes,
       soundEnabled: DEFAULT_SETTINGS.soundEnabled,
       manualOverrideMinutes: DEFAULT_SETTINGS.manualOverrideMinutes,
+      completionSound: DEFAULT_SETTINGS.completionSound,
     })
     assert.equal(Object.hasOwn(settings, 'unknownKey'), false)
   })
@@ -68,6 +69,15 @@ describe('normalizeSettings', () => {
     assert.equal(normalizeSettings({ manualOverrideMinutes: 9999 }).manualOverrideMinutes, DEFAULT_SETTINGS.manualOverrideMinutes)
     assert.equal(normalizeSettings({ manualOverrideMinutes: Number.NaN }).manualOverrideMinutes, DEFAULT_SETTINGS.manualOverrideMinutes)
     assert.equal(normalizeSettings({ manualOverrideMinutes: '30' }).manualOverrideMinutes, DEFAULT_SETTINGS.manualOverrideMinutes)
+  })
+
+  it('keeps only a known completion cue', () => {
+    assert.equal(normalizeSettings({ completionSound: 'ding' }).completionSound, 'ding')
+    assert.equal(normalizeSettings({ completionSound: 'off' }).completionSound, 'off')
+    assert.equal(normalizeSettings({ completionSound: 'blip' }).completionSound, 'blip')
+    assert.equal(normalizeSettings({ completionSound: 'airhorn' }).completionSound, DEFAULT_SETTINGS.completionSound)
+    assert.equal(normalizeSettings({ completionSound: 7 }).completionSound, DEFAULT_SETTINGS.completionSound)
+    assert.equal(normalizeSettings({ completionSound: null }).completionSound, DEFAULT_SETTINGS.completionSound)
   })
 
   it('resolves the rule and the reminder second', () => {
