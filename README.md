@@ -58,7 +58,7 @@ plugin_manager({ action: 'install_bundle', target: '/绝对路径/dsh-theme-slee
 
 > 仓库提交了构建产物 `lib/`：DSH 的链接安装不跑构建步骤，`lib/client.js` 就是浏览器实际加载的那份文件。所以从 GitHub 装不需要你先构建。
 >
-> 需要 DSH `0.2.x`。插件只用宿主已有的 `theme`、`slots`、`locale`、`configForms` 四个服务，加一个 npm 包 `@deepseek-ai/schemastery` 做 Host 半边的 Config 校验。
+> 在 DSH `0.2.1-alpha.1` 上开发与验证。插件只用宿主已有的 `theme`、`slots`、`locale`、`configForms` 四个服务，加一个 npm 包 `@deepseek-ai/schemastery` 做 Host 半边的 Config 校验。
 
 ## 配置
 
@@ -88,13 +88,15 @@ profile 的 `cordis.patch.yml` 可以覆盖任意字段，设置页的改动写�
 
 时间一律 `HH:mm`。规则允许跨午夜：`dayStart: '22:00'`、`dayEnd: '05:00'` 表示夜里浅色。两个时间相同表示不切换。
 
+设置页的改动即时生效：改完时间会立刻重算当前时段，改完提醒时间会立刻重排下一天的提醒。`manualOverrideMinutes` 只在「你手动改主题」之后才起作用。
+
 ## 开发
 
 ```sh
 pnpm install           # pnpm 11 需要 pnpm-workspace.yaml 里 allowBuilds 放行 esbuild
 pnpm run typecheck     # tsc --noEmit
 pnpm run build         # esbuild 出 lib/client.js，tsc 出 Host 与 core
-pnpm run test:core     # 纯逻辑单测（node --test）
+pnpm run test:core     # 纯逻辑单测（node --test "tests/**/*.test.mjs"）
 pnpm run test:client   # jsdom 里加载真实 lib/client.js 的端到端测试
 pnpm run check:fresh   # 重新构建并断言 lib/ 没有漂移
 pnpm run verify        # typecheck + build + 两个测试
