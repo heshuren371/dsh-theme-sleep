@@ -163,7 +163,7 @@ const READY_VALUE = {
  *   durable store the "previous page" left behind.
  * @returns Harness handles used by the scenarios.
  */
-function createHarness({ now, theme = 'dark', formSnapshot, storedState }) {
+function createHarness({ now, theme = 'dark', formSnapshot, storedState, sessionService = true }) {
   const virtualConsole = new VirtualConsole()
   virtualConsole.on('error', (...args) => { consoleErrors.push('[window] ' + describe(args)) })
   virtualConsole.on('jsdomError', error => {
@@ -224,6 +224,7 @@ function createHarness({ now, theme = 'dark', formSnapshot, storedState }) {
     localeNamespace: null,
     dictionaries: null,
     injections: [],
+    serviceInjects: [],
     registrations: [],
     themeCalls: [],
     formIds: [],
@@ -295,8 +296,8 @@ function createHarness({ now, theme = 'dark', formSnapshot, storedState }) {
     },
   }
 
-  // Session running state, driven by the completion scenario: the client reads
-  // `ctx.uiSession.sessionStatus` and folds it into the completion cue.
+  // Session running state, driven by the completion scenario: the client reaches
+  // it through `ctx.inject(['uiSession'], …)`.
   let sessionStatus = new Map()
   const sessionStatusListeners = new Set()
   const emitRunning = entries => {
@@ -326,6 +327,16 @@ function createHarness({ now, theme = 'dark', formSnapshot, storedState }) {
         const index = list.indexOf(listener)
         if (index >= 0) list.splice(index, 1)
       }
+    },
+    // Cordis starts the callback in a child scope once every named service is
+    // active; with one missing the scope stays pending and never runs.
+    inject(deps, callback) {
+      state.serviceInjects.push([...deps])
+      if (!sessionService) return
+      const dispose = callback({ ...ctx, uiSession: { sessionStatus: statusSource } })
+      const owned = typeof dispose === 'function' ? dispose : noop
+      state.effects.push(owned)
+      return owned
     },
     locale: {
       register(namespace, dictionaries) {
@@ -361,7 +372,6 @@ function createHarness({ now, theme = 'dark', formSnapshot, storedState }) {
       getTheme: () => snapshot(),
       setTheme,
     },
-    uiSession: { sessionStatus: statusSource },
     configForms: {
       get(entryId) {
         state.formIds.push(entryId)
@@ -377,6 +387,12 @@ function createHarness({ now, theme = 'dark', formSnapshot, storedState }) {
     },
     layout: { selectPanel: noop },
   }
+  // Cordis's context proxy throws on a service read the plugin did not declare
+  // in `inject`; the double must throw too, or a direct read passes here and
+  // takes the whole entry down in the shell.
+  Object.defineProperty(ctx, 'uiSession', {
+    get() { throw new Error('cannot get property "uiSession" without inject') },
+  })
 
   // ── harness operations ───────────────────────────────────────────────────
   function pointGlobals() {
@@ -1059,6 +1075,11 @@ console.log('\n[6] completion cue on a finished turn')
     const mod = h.instantiate()
     const applyError = await h.applyWith(mod)
     check('[6] apply resolves with a session-status source', applyError === null, applyError && String(applyError.stack ?? applyError))
+    check(
+      '[6] the cue injects ui-session instead of reading it',
+      h.state.serviceInjects.some(deps => deps.includes('uiSession')),
+      JSON.stringify(h.state.serviceInjects),
+    )
 
     // The baseline is taken at apply time; a Session that was already idle must
     // never ring when the page opens.
@@ -1119,6 +1140,36 @@ console.log('\n[6] completion cue on a finished turn')
     check('[6] no plugin listener errors were recorded', h.state.errors.length === 0, h.state.errors.map(String).join(' | '))
   } catch (error) {
     check('[6] scenario completed', false, String(error && error.stack ? error.stack : error))
+  }
+}
+
+// A shell with no ui-session keeps the theme rule and the reminder; the cue is
+// never wired and nothing throws.
+{
+  const h = createHarness({
+    now: msAt(12, 0),
+    theme: 'dark',
+    formSnapshot: { status: 'ready', value: { ...READY_VALUE }, writable: true },
+    sessionService: false,
+  })
+  try {
+    h.evaluate()
+    const mod = h.instantiate()
+    const applyError = await h.applyWith(mod)
+    check('[6] a missing ui-session still applies', applyError === null, applyError && String(applyError.stack ?? applyError))
+    check(
+      '[6] the pending scope names ui-session',
+      h.state.serviceInjects.some(deps => deps.includes('uiSession')),
+      JSON.stringify(h.state.serviceInjects),
+    )
+    h.emitRunning([['s1', true]])
+    h.emitRunning([['s1', false]])
+    check('[6] a missing ui-session plays nothing', h.reads.audio === 0, String(h.reads.audio))
+    check('[6] the theme rule still runs', h.themeIds().includes('light'), JSON.stringify(h.themeIds()))
+    const disposeErrors = await h.disposeAll()
+    check('[6] missing-service teardown is clean', disposeErrors.length === 0, disposeErrors.map(String).join(' | '))
+  } catch (error) {
+    check('[6] missing-service scenario completed', false, String(error && error.stack ? error.stack : error))
   }
 }
 

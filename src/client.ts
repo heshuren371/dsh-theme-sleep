@@ -138,22 +138,31 @@ interface SessionStatusSourceView {
   subscribe?(listener: () => void): Disposer
 }
 
+/**
+ * Context of an `inject` scope whose services are active when the callback runs.
+ * The member is required here and absent from {@link PluginContext} because
+ * Cordis throws on reading a service the plugin did not declare.
+ */
+interface SessionScope {
+  uiSession: { sessionStatus: SessionStatusSourceView | RunningSnapshot }
+}
+
 /** The restricted Cordis context the shell hands to `apply`. */
 interface PluginContext {
   effect(callback: () => Disposer | void, label?: string): Disposer
   on(event: string, listener: (...args: never[]) => void): Disposer
+  /**
+   * Run a callback in a child context that waits for the named services, and
+   * tear it down with this plugin. Services the plugin does not declare in
+   * `exports.inject` are reachable only from here.
+   */
+  inject(deps: readonly string[], callback: (scope: PluginContext & SessionScope) => Disposer | void): unknown
   locale: ClientLocaleService
   slots: ClientSlotsService
   theme: ThemeService
   configForms: { get(entryId: string): ConfigFormView }
   timer: TimerService
   layout?: { selectPanel?(id: string): void }
-  /**
-   * Session UI status, published by ui-session. Optional in the type and read
-   * defensively: it is not in `exports.inject`, because a shell without it must
-   * still get the theme and the bedtime reminder.
-   */
-  uiSession?: { sessionStatus?: SessionStatusSourceView | RunningSnapshot }
 }
 
 /** Shape this bundle exports back to the shell. */
@@ -723,9 +732,7 @@ sink.load({
        * returns it and the subscription is a no-op, which degrades to "the cue
        * fires only when something else publishes".
        */
-      const runningSource = (): RunningSource | null => {
-        const status = ctx.uiSession?.sessionStatus
-        if (status === undefined || status === null) return null
+      const runningSource = (status: SessionStatusSourceView | RunningSnapshot): RunningSource => {
         const read = (): RunningSnapshot => (
           typeof (status as SessionStatusSourceView).getSnapshot === 'function'
             ? (status as SessionStatusSourceView).getSnapshot!()
@@ -913,16 +920,16 @@ sink.load({
 
       ctx.effect(() => ctx.on('theme/change', onThemeChange), 'theme-sleep: theme/change listener')
 
-      ctx.effect(() => {
-        const source = runningSource()
-        if (source === null) {
-          logError('completion watch', 'the uiSession service is unavailable; a finished turn has no cue')
-          return
-        }
-        const watch = new CompletionWatch(source, () => { playCompletionCue(settings.completionSound) })
+      // The watch waits for `uiSession` in a child context, so the entry
+      // activates without the service and the cue starts if it appears.
+      ctx.inject(['uiSession'], scope => {
+        const watch = new CompletionWatch(
+          runningSource(scope.uiSession.sessionStatus),
+          () => { playCompletionCue(settings.completionSound) },
+        )
         watch.start()
         return () => { watch.stop() }
-      }, 'theme-sleep: completion cue')
+      })
 
       ctx.effect(() => {
         let disposed = false
