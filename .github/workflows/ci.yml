@@ -40,6 +40,11 @@ jobs:
       - name: Freshness check (lib/ must equal a fresh build)
         run: pnpm run check:fresh
 
+      # 链接安装的 Host 半边在运行时解析 @deepseek-ai/schemastery；依赖缺失时
+      # import 就抛错，整个 bundle 从页面上消失，而其它测试全绿。先加载一遍。
+      - name: Host half loads
+        run: pnpm run check:host
+
       - name: Unit tests (pure core)
         run: pnpm run test:core
 

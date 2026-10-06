@@ -33,6 +33,7 @@ README 搬。
 | `scripts/build.mjs` | esbuild 打 Client bundle + tsc 出 Host 与核心 |
 | `scripts/smoke.mjs` | jsdom 里加载真实 `lib/client.js` 的端到端测试（`test:client`） |
 | `scripts/check-fresh.mjs` | 重新构建并断言 `lib/` 与 `src/` 一致（`check:fresh`） |
+| `scripts/check-host.mjs` | 真实 import `lib/index.js` 并验 Config 形状（`check:host`）：依赖缺失时整个插件会在激活阶段消失，这道门禁专门抓它 |
 | `tests/core/**` | 纯逻辑单测，跑在构建产物上（`test:core`） |
 | `cordis.patch.yml` | 插入 Loader 行 `theme-sleep` → `@local/dsh-theme-sleep` |
 | `locale/*.json` / `icon.svg` | Plugin Manager 与设置页读的展示元数据 |
@@ -43,10 +44,11 @@ README 搬。
 pnpm install           # 直接装；pnpm-workspace.yaml 已允许 esbuild 的安装脚本
 pnpm run typecheck     # tsc --noEmit
 pnpm run build         # esbuild + tsc
+pnpm run check:host    # 真实 import lib/index.js，验证 Host 半边能加载
 pnpm run check:fresh   # 重新构建并断言 lib/ 未漂移
 pnpm run test:core     # node --test tests/
 pnpm run test:client   # scripts/smoke.mjs
-pnpm run verify        # typecheck + build + 两个测试
+pnpm run verify        # typecheck + build + 两个测试 + Host 加载检查
 ```
 
 CI（`.github/workflows/ci.yml`）跑的就是 `verify` 加一次 `check:fresh`。
@@ -90,6 +92,7 @@ CI（`.github/workflows/ci.yml`）跑的就是 `verify` 加一次 `check:fresh`�
   起不来；服务缺席时完成提示音静默跳过，不要改成硬依赖。
 - 完成提示音只在页面可见时响：后台标签页用户听不见，部分浏览器还会挂起它的音频上下文。
 - 会话完成判据是**运行中→空闲**这一个转换。首次看到的空闲会话是基线，不算完成；从快照里消失的会话也不算完成（那代表会话没了，不是活干完了）。
+- **`node_modules` 掉了会让整个插件消失，而且没有任何测试会红。** Host 半边（`lib/schema.js`）在运行时 `import '@deepseek-ai/schemastery'`，链接安装是从本目录的 `node_modules` 解析的；依赖缺失时 import 在激活阶段抛错，DSH 丢掉整个 bundle，页面上的两个挂载点一起消失。恢复：`pnpm install`，然后 `pnpm run check:host`。`check:host` 就是为这个故障加的守卫，别删。
 - **就寝提醒只在浏览器页面打开时可见。** 这是 Web 插件的边界，不是可以修的缺陷：页面在后台时只能靠系统通知触达用户。
 - 所有提示音都受浏览器自动播放策略限制：页面还没被用户点过时，第一次提示可能静音。别把它当 bug 去查。
 
